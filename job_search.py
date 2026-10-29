@@ -17,14 +17,18 @@ class JobPosting:
     skills: list[str] = field(default_factory=list)
 
 
-def search_mycareersfuture(keywords: str, max_results: int = 40) -> list[JobPosting]:
+def search_mycareersfuture(
+    keywords: str,
+    max_results: int = 40,
+    sort_by: str = "new_posting_date",
+) -> list[JobPosting]:
     """Search MyCareersFuture. Returns a list of JobPosting."""
     results: list[JobPosting] = []
     page = 0
 
     while len(results) < max_results:
         url = f"{MCF_URL}?limit=100&page={page}"
-        payload = {"search": keywords.strip(), "sortBy": ["new_posting_date"]}
+        payload = {"search": keywords.strip(), "sortBy": [sort_by]}
 
         try:
             r = requests.post(url, json=payload, timeout=15)
