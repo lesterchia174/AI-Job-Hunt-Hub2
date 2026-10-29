@@ -1264,96 +1264,138 @@ def view_tracker(search: str):
 # 5.0. JOB SEARCH VIEW  (MyCareersFuture)
 # ---------------------------------------------------------------------------
 
+#def view_job_search():
+#    st.title("🔎 Job Search — MyCareersFuture")
+#    st.caption(
+#        "Search Singapore's national job portal. Pick a result to pre-fill the "
+#        "New Application form; you still control generation and saving there."
+#    )
+
+#   if not _JOB_SEARCH_AVAILABLE:
+#        st.error(
+#            "`job_search.py` module not found. Create it in the same directory "
+#            "as `app.py` to enable this page."
+#        )
+#        return
+
+#    with st.form("mcf_search_form"):
+#        c1, c2 = st.columns([3, 1])
+#        keywords = c1.text_input(
+#            "Role / keywords",
+#            placeholder="data analyst, python developer, cybersecurity...",
+#        )
+#        max_results = c2.number_input(
+#            "Max results", min_value=10, max_value=300, value=60, step=10,
+#        )
+
+#        c3, c4 = st.columns(2)
+#        sort_by = c3.selectbox(
+#            "Sort by",
+#            ["new_posting_date", "relevancy"],
+#            format_func=lambda x: (
+#                "Newest first" if x == "new_posting_date" else "Most relevant"
+#            ),
+#        )
+#        include_desc = c4.checkbox(
+#            "Include full description in preview", value=False,
+#        )
+
+#        submitted = st.form_submit_button("Search", type="primary")
+
+#    if not submitted:
+#        return
+#    if not keywords.strip():
+#        st.warning("Enter at least one keyword.")
+#        return
+
+#    with st.spinner(f"Searching MyCareersFuture for “{keywords}”..."):
+#        try:
+#            results, diag = search_mycareersfuture(
+#                keywords=keywords,
+#                max_results=int(max_results),
+#                sort_by=sort_by,
+#            )
+#        except Exception as e:
+#            st.error(f"Search failed: {e}")
+#            return
+
+#    for err in diag.get("errors", []):
+#        st.warning(err)
+
+#    if not results:
+#        st.info("No results. Try broader keywords or a different sort order.")
+#        return
+
+#    st.success(
+#        f"{len(results)} postings · {diag.get('pages_fetched', 0)} page(s) fetched"
+#    )
+
+#    for i, job in enumerate(results):
+#        with st.container(border=True):
+#            st.markdown(f"**{job.title}** — {job.company}")
+#            meta = [job.location, job.salary or "salary not listed"]
+#            if job.employment_type:
+#                meta.append(job.employment_type)
+#            if job.posted_date:
+#                meta.append(job.posted_date)
+#            st.caption(" · ".join(m for m in meta if m))
+
+#            if job.skills:
+#                st.caption("Skills: " + ", ".join(job.skills[:8]))
+
+#            if include_desc and job.description:
+#                with st.expander("Description preview"):
+#                    st.write(job.description[:3000])
+
+#            if st.button("Use this job →", key=f"mcf_use_{i}"):
+#                st.session_state["app_company"] = job.company
+#                st.session_state["app_role"] = job.title
+#                st.session_state["app_url"] = job.url
+#                st.session_state["app_desc"] = job.description
+#                st.session_state["nav_to_new_app"] = True
+#                st.rerun()
+
+
 def view_job_search():
     st.title("🔎 Job Search — MyCareersFuture")
-    st.caption(
-        "Search Singapore's national job portal. Pick a result to pre-fill the "
-        "New Application form; you still control generation and saving there."
-    )
+    st.caption("Search Singapore's job portal. Pick a job to pre-fill the New Application form.")
 
-    if not _JOB_SEARCH_AVAILABLE:
-        st.error(
-            "`job_search.py` module not found. Create it in the same directory "
-            "as `app.py` to enable this page."
-        )
-        return
+    col1, col2 = st.columns([3, 1])
+    keywords = col1.text_input("Keywords", placeholder="data analyst, python developer...")
+    max_results = col2.number_input("Max results", 10, 100, 40, 10)
 
-    with st.form("mcf_search_form"):
-        c1, c2 = st.columns([3, 1])
-        keywords = c1.text_input(
-            "Role / keywords",
-            placeholder="data analyst, python developer, cybersecurity...",
-        )
-        max_results = c2.number_input(
-            "Max results", min_value=10, max_value=300, value=60, step=10,
-        )
-
-        c3, c4 = st.columns(2)
-        sort_by = c3.selectbox(
-            "Sort by",
-            ["new_posting_date", "relevancy"],
-            format_func=lambda x: (
-                "Newest first" if x == "new_posting_date" else "Most relevant"
-            ),
-        )
-        include_desc = c4.checkbox(
-            "Include full description in preview", value=False,
-        )
-
-        submitted = st.form_submit_button("Search", type="primary")
-
-    if not submitted:
-        return
-    if not keywords.strip():
-        st.warning("Enter at least one keyword.")
-        return
-
-    with st.spinner(f"Searching MyCareersFuture for “{keywords}”..."):
-        try:
-            results, diag = search_mycareersfuture(
-                keywords=keywords,
-                max_results=int(max_results),
-                sort_by=sort_by,
-            )
-        except Exception as e:
-            st.error(f"Search failed: {e}")
+    if st.button("Search", type="primary"):
+        if not keywords.strip():
+            st.warning("Enter some keywords.")
             return
 
-    for err in diag.get("errors", []):
-        st.warning(err)
+        with st.spinner("Searching..."):
+            try:
+                results = search_mycareersfuture(keywords, int(max_results))
+            except Exception as e:
+                st.error(str(e))
+                return
 
-    if not results:
-        st.info("No results. Try broader keywords or a different sort order.")
-        return
+        if not results:
+            st.info("No results. Try different keywords.")
+            return
 
-    st.success(
-        f"{len(results)} postings · {diag.get('pages_fetched', 0)} page(s) fetched"
-    )
+        st.success(f"{len(results)} results")
 
-    for i, job in enumerate(results):
-        with st.container(border=True):
-            st.markdown(f"**{job.title}** — {job.company}")
-            meta = [job.location, job.salary or "salary not listed"]
-            if job.employment_type:
-                meta.append(job.employment_type)
-            if job.posted_date:
-                meta.append(job.posted_date)
-            st.caption(" · ".join(m for m in meta if m))
+        for i, job in enumerate(results):
+            with st.container(border=True):
+                st.markdown(f"**{job.title}** — {job.company}")
+                st.caption(f"{job.location} · {job.salary or 'salary not listed'} · {job.posted_date}")
 
-            if job.skills:
-                st.caption("Skills: " + ", ".join(job.skills[:8]))
+                if st.button("Use this job →", key=f"use_{i}"):
+                    st.session_state["app_company"] = job.company
+                    st.session_state["app_role"] = job.title
+                    st.session_state["app_url"] = job.url
+                    st.session_state["app_desc"] = job.description
+                    st.session_state["nav_to_new_app"] = True
+                    st.rerun()
 
-            if include_desc and job.description:
-                with st.expander("Description preview"):
-                    st.write(job.description[:3000])
 
-            if st.button("Use this job →", key=f"mcf_use_{i}"):
-                st.session_state["app_company"] = job.company
-                st.session_state["app_role"] = job.title
-                st.session_state["app_url"] = job.url
-                st.session_state["app_desc"] = job.description
-                st.session_state["nav_to_new_app"] = True
-                st.rerun()
 
 
 def view_new_application():
