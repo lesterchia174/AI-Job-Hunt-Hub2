@@ -1360,9 +1360,14 @@ def view_job_search():
     st.title("🔎 Job Search — MyCareersFuture")
     st.caption("Search Singapore's job portal. Pick a job to pre-fill the New Application form.")
 
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([3, 1, 1])
     keywords = col1.text_input("Keywords", placeholder="data analyst, python developer...")
     max_results = col2.number_input("Max results", 10, 100, 40, 10)
+    sort_by = col3.selectbox(
+        "Sort by",
+        ["new_posting_date", "relevancy"],
+        format_func=lambda x: "Newest" if x == "new_posting_date" else "Relevant",
+    )
 
     if st.button("Search", type="primary"):
         if not keywords.strip():
@@ -1371,7 +1376,7 @@ def view_job_search():
 
         with st.spinner("Searching..."):
             try:
-                results = search_mycareersfuture(keywords, int(max_results))
+                results = search_mycareersfuture(keywords, int(max_results), sort_by=sort_by)
             except Exception as e:
                 st.error(str(e))
                 return
