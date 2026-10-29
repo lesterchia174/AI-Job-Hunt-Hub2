@@ -1,11 +1,11 @@
 """
-AI Job Hunt OS — Test Build v4.2.3.3 (Supabase Edition)
+AI Job Hunt OS — Test Build v4.2.3.4 (Supabase Edition)
 Streamlit app that tracks job applications and uses AI (Groq + AI Singapore)
 to tailor resumes and generate cover letters.
 
 Now with:
 - Quick Import from Job Link inside the existing "New Application" view
-- MyCareersFuture Job Search (search → preview → one-click pre-fill of New Application)
+- MyCareersFuture Job Search (built-in; no separate module needed)
 - "Edit & Export" view with a rich text (Markdown) editor (streamlit-lexical-extended)
 - PDF / DOCX export, downloaded to the user's local drive (no .txt, no Storage bucket)
 - Filenames written back to the existing `applications` table columns
@@ -23,6 +23,7 @@ import io
 import os
 import re
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from xml.sax.saxutils import escape as xml_escape
 from zoneinfo import ZoneInfo
@@ -37,14 +38,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from groq import Groq
 from openai import OpenAI
 
-# MyCareersFuture search adapter (optional — app degrades gracefully if absent)
-try:
-    from job_search import search_mycareersfuture, JobPosting
-    _JOB_SEARCH_AVAILABLE = True
-except ImportError:
-    search_mycareersfuture = None
-    JobPosting = None
-    _JOB_SEARCH_AVAILABLE = False
+# MyCareersFuture search is now built-in
+_JOB_SEARCH_AVAILABLE = True
 
 # Optional UI components (the app degrades gracefully if they are missing)
 try:
@@ -921,7 +916,6 @@ def markdown_to_pdf_bytes(md: str) -> bytes:
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     from reportlab.lib import colors
 
-    # --- RIGOROUS UNICODE SANITIZATION ---
     if md:
         md = (
             md.replace("\u00a0", " ")
@@ -936,7 +930,6 @@ def markdown_to_pdf_bytes(md: str) -> bytes:
               .replace("\u2018", "'")
               .replace("\u2019", "'")
         )
-    # ------------------------------------
 
     buf = io.BytesIO()
     pdf = SimpleDocTemplate(
@@ -1261,99 +1254,92 @@ def view_tracker(search: str):
 
 
 # ---------------------------------------------------------------------------
-# 5.0. JOB SEARCH VIEW  (MyCareersFuture)
+# 5.0. JOB SEARCH VIEW  (MyCareersFuture — built-in)
 # ---------------------------------------------------------------------------
 
-#def view_job_search():
-#    st.title("🔎 Job Search — MyCareersFuture")
-#    st.caption(
-#        "Search Singapore's national job portal. Pick a result to pre-fill the "
-#        "New Application form; you still control generation and saving there."
-#    )
+MCF_URL = "https://api.mycareersfuture.gov.sg/v2/search"
+MCF_DETAIL_URL = "https://api.mycareersfuture.gov.sg/v2/jobs"
 
-#   if not _JOB_SEARCH_AVAILABLE:
-#        st.error(
-#            "`job_search.py` module not found. Create it in the same directory "
-#            "as `app.py` to enable this page."
-#        )
-#        return
 
-#    with st.form("mcf_search_form"):
-#        c1, c2 = st.columns([3, 1])
-#        keywords = c1.text_input(
-#            "Role / keywords",
-#            placeholder="data analyst, python developer, cybersecurity...",
-#        )
-#        max_results = c2.number_input(
-#            "Max results", min_value=10, max_value=300, value=60, step=10,
-#        )
+@dataclass
+class JobPosting:
+    title: str
+    company: str
+    url: str
+    uuid: str = ""
+    description: str = ""
+    location: str = ""
+    salary: str = ""
+    posted_date: str = ""
+    skills: list[str] = field(default_factory=list)
 
-#        c3, c4 = st.columns(2)
-#        sort_by = c3.selectbox(
-#            "Sort by",
-#            ["new_posting_date", "relevancy"],
-#            format_func=lambda x: (
-#                "Newest first" if x == "new_posting_date" else "Most relevant"
-#            ),
-#        )
-#        include_desc = c4.checkbox(
-#            "Include full description in preview", value=False,
-#        )
 
-#        submitted = st.form_submit_button("Search", type="primary")
+def search_mycareersfuture(
+    keywords: str,
+    max_results: int = 40,
+    sort_by: str = "new_posting_date",
+) -> list[JobPosting]:
+    """Search MyCareersFuture. Returns a list of JobPosting (no full description)."""
+    results: list[JobPosting] = []
+    page = 0
 
-#    if not submitted:
-#        return
-#    if not keywords.strip():
-#        st.warning("Enter at least one keyword.")
-#        return
+    while len(results) < max_results:
+        url = f"{MCF_URL}?limit=100&page={page}"
+        payload = {"search": keywords.strip(), "sortBy": [sort_by]}
 
-#    with st.spinner(f"Searching MyCareersFuture for “{keywords}”..."):
-#        try:
-#            results, diag = search_mycareersfuture(
-#                keywords=keywords,
-#                max_results=int(max_results),
-#                sort_by=sort_by,
-#            )
-#        except Exception as e:
-#            st.error(f"Search failed: {e}")
-#            return
+        try:
+            r = requests.post(url, json=payload, timeout=15)
+            r.raise_for_status()
+            jobs = r.json().get("results", [])
+        except Exception as e:
+            raise RuntimeError(f"Search failed: {e}")
 
-#    for err in diag.get("errors", []):
-#        st.warning(err)
+        if not jobs:
+            break
 
-#    if not results:
-#        st.info("No results. Try broader keywords or a different sort order.")
-#        return
+        for j in jobs:
+            company = (j.get("postedCompany") or {}).get("name", "")
+            salary = j.get("salary") or {}
+            salary_str = salary.get("range", "") if isinstance(salary, dict) else ""
+            skills = [s.get("skill", "") for s in (j.get("skills") or []) if isinstance(s, dict)]
 
-#    st.success(
-#        f"{len(results)} postings · {diag.get('pages_fetched', 0)} page(s) fetched"
-#    )
+            results.append(JobPosting(
+                title=j.get("title", ""),
+                company=company,
+                url=j.get("absoluteUrl", ""),
+                uuid=j.get("uuid", ""),
+                description=j.get("description", ""),
+                location=j.get("location", ""),
+                salary=salary_str,
+                posted_date=j.get("newPostingDate", ""),
+                skills=skills,
+            ))
+            if len(results) >= max_results:
+                break
 
-#    for i, job in enumerate(results):
-#        with st.container(border=True):
-#            st.markdown(f"**{job.title}** — {job.company}")
-#            meta = [job.location, job.salary or "salary not listed"]
-#            if job.employment_type:
-#                meta.append(job.employment_type)
-#            if job.posted_date:
-#                meta.append(job.posted_date)
-#            st.caption(" · ".join(m for m in meta if m))
+        if len(jobs) < 100:
+            break
+        page += 1
 
-#            if job.skills:
-#                st.caption("Skills: " + ", ".join(job.skills[:8]))
+    return results
 
-#            if include_desc and job.description:
-#                with st.expander("Description preview"):
-#                    st.write(job.description[:3000])
 
-#            if st.button("Use this job →", key=f"mcf_use_{i}"):
-#                st.session_state["app_company"] = job.company
-#                st.session_state["app_role"] = job.title
-#                st.session_state["app_url"] = job.url
-#                st.session_state["app_desc"] = job.description
-#                st.session_state["nav_to_new_app"] = True
-#                st.rerun()
+def get_job_description(uuid: str) -> str:
+    """Fetch the full job description for one posting."""
+    if not uuid:
+        return ""
+    try:
+        r = requests.get(f"{MCF_DETAIL_URL}/{uuid}", timeout=15)
+        r.raise_for_status()
+        data = r.json()
+    except Exception:
+        return ""
+
+    desc = data.get("description") or ""
+    if not desc:
+        meta = data.get("metadata") or {}
+        desc = meta.get("jobDescription") or ""
+    return desc
 
 
 def view_job_search():
@@ -1393,14 +1379,18 @@ def view_job_search():
                 st.caption(f"{job.location} · {job.salary or 'salary not listed'} · {job.posted_date}")
 
                 if st.button("Use this job →", key=f"use_{i}"):
+                    with st.spinner("Loading full job description..."):
+                        desc = get_job_description(job.uuid)
+                    if not desc:
+                        st.warning("Could not load the full description — you can paste it manually.")
+                        desc = job.description
+
                     st.session_state["app_company"] = job.company
                     st.session_state["app_role"] = job.title
                     st.session_state["app_url"] = job.url
-                    st.session_state["app_desc"] = job.description
+                    st.session_state["app_desc"] = desc
                     st.session_state["nav_to_new_app"] = True
                     st.rerun()
-
-
 
 
 def view_new_application():
@@ -2040,10 +2030,7 @@ def view_settings():
         f"- streamlit-lexical-extended (rich editor): "
         f"{'✅ installed' if streamlit_lexical_extended else '❌ missing'}"
     )
-    st.write(
-        f"- job_search (MyCareersFuture adapter): "
-        f"{'✅ installed' if _JOB_SEARCH_AVAILABLE else '❌ missing'}"
-    )
+    st.write("- MyCareersFuture search: ✅ built-in")
 
     st.markdown("**Test Direct Calls**")
     if provider == "groq":
