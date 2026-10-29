@@ -1,0 +1,7 @@
+# requirements-dev.txt
+-r requirements.txt
+
+# Step 2 — Outbox agent (not yet imported)
+rapidfuzz>=3.6.0
+msal>=1.28.0
+msal-streamlit-authentication>=1.0.6
